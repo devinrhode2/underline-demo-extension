@@ -1,5 +1,5 @@
 chrome.devtools.panels.create(
-  'Dev Tools from chrome-extension-boilerplate-react',
+  'Underline demo extension',
   'icon-34.png',
   'panel.html'
 );
