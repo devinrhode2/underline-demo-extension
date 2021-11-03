@@ -12,6 +12,7 @@
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*", "<all_urls>"],
+      "run_at": "document_idle",
       "js": ["contentScript.bundle.js"],
       "css": ["content.styles.css"]
     }
