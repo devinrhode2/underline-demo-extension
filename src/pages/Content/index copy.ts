@@ -1,6 +1,6 @@
 import { debounce, DebouncedFunc } from 'lodash'
 
-console.log('Content script injected!');
+console.log('Content script works!');
 console.log('Must reload extension for modifications to take effect.');
 
 // Even at document_idle, lots of stuff can still be happening,
@@ -8,10 +8,10 @@ console.log('Must reload extension for modifications to take effect.');
 // no other extensions, on keep.google.com
 
 // init is defined via magic - do you know of said magic? (FYI - I think it's a bad practice, just trying to have fun here :)
-// setTimeout(init, 2000) // skipping because it's annoying in development :)
-init()
+setTimeout(init, 2000) // skipping because it's annoying in development :)
+// init()
 
-// Gosh, why is built-in EventTarget type is so bad :/
+// Gosh idk why ts EventTarget type is so bad :/
 type RealisticEventTarget = Element | null
 
 function init() {
@@ -24,13 +24,13 @@ function init() {
     if (isContentEditable(activeElement)) {
       console.log('already focused on contenteditable div, starting the engines...')
       startKeyUpListener(activeElement)
-      // Note: activeElement now has type ContentEditableDiv :)
+      // Note: activeElement is now an HTMLDivElement :)
       highlight(activeElement)
     }
   }
 }
 
-// `interface` gives us better hover annotations throughout code. Example above: init()->highlight(*activeElement*)
+// IME `interface` (as opposed to `type`) should let this nice type name flow through rest of code hover annotations
 interface ContentEditableDiv extends HTMLDivElement {}
 
 function isContentEditable(thing: Element | EventTarget | null): thing is ContentEditableDiv {
@@ -42,6 +42,11 @@ function isContentEditable(thing: Element | EventTarget | null): thing is Conten
     contentEditableAttr !== 'false'
   )
   return isValidAttr
+  if (isValidAttr) {
+    // Ensure all other code can simply read the property normally, without concern:
+    // (thing as HTMLDivElement).contentEditable = true
+    return isValidAttr
+  }
 }
 
 let lastActiveElement: undefined | ContentEditableDiv
@@ -54,8 +59,8 @@ function maybeUpdateHighlight(event: FocusEvent) {
   if (event.type === 'focusin') {
     let { activeElement } = document
 
+    // log this to sentry, remove or archive if it never happens:
     if (!isContentEditable(activeElement)) {
-      // log this to sentry. If it never happens - remove this check
       console.warn(
         'document.activeElement IS NOT contenteditable but focusin event.target IS',
         { eventTarget, activeElement }
@@ -73,16 +78,16 @@ function maybeUpdateHighlight(event: FocusEvent) {
     highlight(activeElement)
   } else if (event.type === 'focusout') {
 
-    // Given implementation requirements, we should always just use `lastActiveElement`(?)
+    // Given implementation requirements, we should always just use `lastActiveElement`.
     // However, if business wants to not always remove highlight when user removes focus on (maybe create setting for user, idk)
     // Then, we may not want to keep this variable reference around, for optimal memory usage. Instead, browser gives us event target
     // we can use that instead of holding onto an extra variable reference.
 
+    // log this to sentry, remove or archive if it never happens:
     if (
       lastActiveElement !== undefined &&
       lastActiveElement !== eventTarget
     ) {
-      // log this to sentry, remove or archive if it never happens:
       console.warn(
         'eventTarget does not match lastActiveElement',
         { lastActiveElement, eventTarget }
@@ -103,7 +108,7 @@ function maybeUpdateHighlight(event: FocusEvent) {
 let lastListener: undefined | DebouncedFunc<(event: KeyboardEvent) => void>
 
 function mapKeyUpToHighlight(event: KeyboardEvent) {
-  if (event.type !== 'keyup') throw new Error('must use keyup event')
+  if (event.type !== 'keyup') throw new Error('must use keyup event - ')
   console.log('keyup event', event)
   // debug/test mode only:
   if (!isContentEditable(event.target)) {
