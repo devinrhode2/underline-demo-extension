@@ -11,9 +11,6 @@ console.log('Must reload extension for modifications to take effect.');
 // setTimeout(init, 2000) // skipping because it's annoying in development :)
 init()
 
-// Gosh, why is built-in EventTarget type is so bad :/
-type RealisticEventTarget = Element | null
-
 function init() {
   console.log('init')
   document.body.addEventListener('focusin', maybeUpdateHighlight)
@@ -31,7 +28,13 @@ function init() {
 }
 
 // `interface` gives us better hover annotations throughout code. Example above: init()->highlight(*activeElement*)
-interface ContentEditableDiv extends HTMLDivElement {}
+interface ContentEditableDiv extends HTMLDivElement {
+  // Exists in chrome... may not exist in other browsers.
+  computedStyleMap?: () => ({
+    // TODO: improve this type? (could use generics - which may or may not be helpful depending on actual implementation)
+    entries: () => Array<[string, string]>
+  })
+}
 
 function isContentEditable(thing: Element | EventTarget | null): thing is ContentEditableDiv {
   if (thing === null) return false
@@ -47,19 +50,10 @@ function isContentEditable(thing: Element | EventTarget | null): thing is Conten
 let lastActiveElement: undefined | ContentEditableDiv
 
 function maybeUpdateHighlight(event: FocusEvent) {
-  // on focusout, activeElement may not be our original div.
-  let eventTarget = event.target as RealisticEventTarget // TODO: TS-UPGRADE: ideally we don't need any type casting here :)
-  if (!isContentEditable(eventTarget)) return
-
   if (event.type === 'focusin') {
     let { activeElement } = document
 
     if (!isContentEditable(activeElement)) {
-      // log this to sentry. If it never happens - remove this check
-      console.warn(
-        'document.activeElement IS NOT contenteditable but focusin event.target IS',
-        { eventTarget, activeElement }
-      )
       return 
     }
 
@@ -72,27 +66,12 @@ function maybeUpdateHighlight(event: FocusEvent) {
     startKeyUpListener(activeElement)
     highlight(activeElement)
   } else if (event.type === 'focusout') {
-
-    // Given implementation requirements, we should always just use `lastActiveElement`(?)
-    // However, if business wants to not always remove highlight when user removes focus on (maybe create setting for user, idk)
-    // Then, we may not want to keep this variable reference around, for optimal memory usage. Instead, browser gives us event target
-    // we can use that instead of holding onto an extra variable reference.
-
     if (
-      lastActiveElement !== undefined &&
-      lastActiveElement !== eventTarget
+      lastActiveElement !== undefined
     ) {
-      // log this to sentry, remove or archive if it never happens:
-      console.warn(
-        'eventTarget does not match lastActiveElement',
-        { lastActiveElement, eventTarget }
-      )
       stopKeyUpListener(lastActiveElement)
       removeHighlight(lastActiveElement)
     }
-
-    stopKeyUpListener(eventTarget)
-    removeHighlight(eventTarget)
   } else {
     // debug/test mode only:
     // Handler is currently only registered for `focusin` and `focusout`
@@ -103,25 +82,52 @@ function maybeUpdateHighlight(event: FocusEvent) {
 let lastListener: undefined | DebouncedFunc<(event: KeyboardEvent) => void>
 
 function mapKeyUpToHighlight(event: KeyboardEvent) {
-  if (event.type !== 'keyup') throw new Error('must use keyup event')
   console.log('keyup event', event)
+  
   // debug/test mode only:
+  if (event.type !== 'keyup') throw new Error('must use keyup event')
   if (!isContentEditable(event.target)) {
     throw new Error('event.target is not a content editable div - this should not be possible here')
   }
+
   highlight(event.target as ContentEditableDiv)
 }
 
-// checkpoint: learned we can read existingContentEditableDiv.childNodes width
+const underlines = [{
+	from: 0,
+	to: 5
+}, {
+	from: 12,
+	to: 15
+}, {
+	from: 30,
+	to: 33
+}]
 
-// This will allow us to use a new strategy:
-// instead of creating a hidden div
-// (which may have side effects:
-// 1. If we make it entirely the same, no matter how identical...
-//    if we put it in the same position in the dom,
-//    and a site is using container > div:first-child selector
-//    Then there's no way to avoid causing conflicts with that style
-// ACTUALLY - we can avoid these side effects like so:
+
+// ********************************** //
+// *** Computing character widths *** //
+// ********************************** //
+/**
+ * There are numerous strategies for computing character widths.
+ * 
+ * We must not forget, we still need to draw the underlines on the actual page.
+ * 
+ * Strategy:
+ *   1. Create an absolutely positioned div on top of the page
+ *        - (document.documentElement.appendChild - try to avoid affecting page flow/css as much as possible)
+ *   2. That div should have all the same computed styles as the ContentEditableDiv the user is typing in/focused on.
+ *   3. However we'll override these styles:
+ *        `color` should be... rgba(... transparent)?
+ *        opacity: 0.45 if localhost
+ *        visibility: hidden unless localhost
+ *        (ensure height/width are propertly calculated...)
+ *        position: absolute;
+ *        left: ${ceDiv.clientY}px;
+ *        right: ${cdDiv.clientX}px
+ *        pointer-events: none
+ */
+
 // get the computed styles on the given contenteditable,
 // "hard-code" those styles into the elements style attribute, with !important
 // Do our computation
@@ -135,28 +141,22 @@ function mapKeyUpToHighlight(event: KeyboardEvent) {
 // This way, we gradually build up a cache of character widths
 // However, if they paste a bunch of stuff, then we need to "walk" through each character we haven't seen before
 
-// "Walking" through each character can serve as a fun progress indicator/loading animation
+// "Walking" through each character could serve as a fun progress indicator/loading animation
 // The the next character we need to process
 // Exactly how we do that is a little tricky.
 
-const smallChars = [
-  'qwertyuiopasdfghjklzxcvbnm'.split('')
-]
-const capitalChars = [
-  'QWERTYUIOPASDFGHJKLZXCVBNM'.split('')
-]
+const smallChars = 'qwertyuiopasdfghjklzxcvbnm'.split('')
+const capitalChars = 'QWERTYUIOPASDFGHJKLZXCVBNM'.split('')
 
-let divForComputation: undefined | HTMLTemplateElement
+let underlineContainer: undefined | HTMLElement
 
-function insertDivForComputation(existingContentEditableDiv: ContentEditableDiv) {
-  divForComputation = document.createElement('template')
-  divForComputation.innerHTML = existingContentEditableDiv.outerHTML
-  console.dir('template node', divForComputation)
-
-  // Change tpl styles:
-  //   visibility: hidden
-  //   opacity: 0
-  //   position: relative (avoid shifting layout)
+function insertUnderlineContainer(existingContentEditableDiv: ContentEditableDiv) {
+  underlineContainer = document.createElement('underline-container')
+  if (!existingContentEditableDiv.computedStyleMap) {
+    throw new Error('browser does not support computedStyleMap()!')
+  }
+  const computedStyle = Object.fromEntries(Array.from(existingContentEditableDiv.computedStyleMap().entries()))
+  
 
   const parent = existingContentEditableDiv.parentNode as ParentNode // This can never be null. Even if you deliberately try to create a div without an <html> or <body> parent, chrome will create <body> for everyone's sanity :)
   // TODO:
@@ -166,13 +166,13 @@ function insertDivForComputation(existingContentEditableDiv: ContentEditableDiv)
   //  Do our computation
   //  "un-hard-code" the styles, remove our computation div?
   //  Further, we can insert our computation div right under document.documentElement at very end of the page, so it really shouldn't interfere with any css
+  parent.insertBefore(underlineContainer.content, existingContentEditableDiv)
   // Generally, computing character widths is a topic of deep optimization.
   //   We could actually use browsers to build a database up in real-time
   //   Sync this charWidth database to client browsers
   //   Even use some cypress scripts to crawl the web, and keep it updated ourselves.
   //   We can spot-check a few characters, "W", "O", "i", "l". If the width of all 4 of these match a known character/font set,
   //   Then we would 
-  parent.insertBefore(divForComputation.content, existingContentEditableDiv)
 }
 
 // replicate actual text in the same font, but with styling on the character spans
@@ -189,7 +189,7 @@ function insertDivForComputation(existingContentEditableDiv: ContentEditableDiv)
 
 function startKeyUpListener(div: ContentEditableDiv) {
   console.log('starting keyup listener...')
-  insertDivForComputation(div)
+  insertUnderlineContainer(div)
   lastListener = debounce(mapKeyUpToHighlight, 500, {trailing: true})
   div.addEventListener('keyup', lastListener)
 }
