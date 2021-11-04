@@ -104,46 +104,22 @@ const underlines = [{
 	to: 33
 }]
 
+// // get the computed styles on the given contenteditable,
+// // "hard-code" those styles into the elements style attribute, with !important
+// // Do our computation
+// // "un-hard-code" the styles, remove our computation div?
+// // Further, we can insert our computation div right under document.documentElement at very end of the page, so it really shouldn't interfere with any css
 
-// ********************************** //
-// *** Computing character widths *** //
-// ********************************** //
-/**
- * There are numerous strategies for computing character widths.
- * 
- * We must not forget, we still need to draw the underlines on the actual page.
- * 
- * Strategy:
- *   1. Create an absolutely positioned div on top of the page
- *        - (document.documentElement.appendChild - try to avoid affecting page flow/css as much as possible)
- *   2. That div should have all the same computed styles as the ContentEditableDiv the user is typing in/focused on.
- *   3. However we'll override these styles:
- *        `color` should be... rgba(... transparent)?
- *        opacity: 0.45 if localhost
- *        visibility: hidden unless localhost
- *        (ensure height/width are propertly calculated...)
- *        position: absolute;
- *        left: ${ceDiv.clientY}px;
- *        right: ${cdDiv.clientX}px
- *        pointer-events: none
- */
+// // However, we can actually do something else nifty:
 
-// get the computed styles on the given contenteditable,
-// "hard-code" those styles into the elements style attribute, with !important
-// Do our computation
-// "un-hard-code" the styles, remove our computation div?
-// Further, we can insert our computation div right under document.documentElement at very end of the page, so it really shouldn't interfere with any css
+// // We can process each character in the actual div, key by key, letter by letter.
+// // Ideally, we process _as the user is typing_
+// // This way, we gradually build up a cache of character widths
+// // However, if they paste a bunch of stuff, then we need to "walk" through each character we haven't seen before
 
-// However, we can actually do something else nifty:
-
-// We can process each character in the actual div, key by key, letter by letter.
-// Ideally, we process _as the user is typing_
-// This way, we gradually build up a cache of character widths
-// However, if they paste a bunch of stuff, then we need to "walk" through each character we haven't seen before
-
-// "Walking" through each character could serve as a fun progress indicator/loading animation
-// The the next character we need to process
-// Exactly how we do that is a little tricky.
+// // "Walking" through each character could serve as a fun progress indicator/loading animation
+// // The the next character we need to process
+// // Exactly how we do that is a little tricky.
 
 const smallChars = 'qwertyuiopasdfghjklzxcvbnm'.split('')
 const capitalChars = 'QWERTYUIOPASDFGHJKLZXCVBNM'.split('')
@@ -151,14 +127,70 @@ const capitalChars = 'QWERTYUIOPASDFGHJKLZXCVBNM'.split('')
 let underlineContainer: undefined | HTMLElement
 
 function insertUnderlineContainer(existingContentEditableDiv: ContentEditableDiv) {
+  // ********************************** //
+  // *** Computing character widths *** //
+  // ********************************** //
+  /**
+   * There are numerous strategies for computing character widths.
+   * 
+   * We must not forget, we still need to draw the underlines on the actual page.
+   * 
+   * Strategy:
+   *   1. Create an absolutely positioned div on top of the page
+   *        - (document.documentElement.appendChild - try to avoid affecting page flow/css as much as possible)
+   *   2. That div should have all the same computed styles as the ContentEditableDiv the user is typing in/focused on.
+   *   3. However we'll override these styles:
+   *        `color` should be... rgba(... transparent)?
+   *        opacity: 0.45 if localhost
+   *        visibility: hidden unless localhost
+   *        (ensure height/width are propertly calculated...)
+   *        position: absolute;
+   *        left: ${ceDiv.clientY}px;
+   *        right: ${cdDiv.clientX}px
+   *        pointer-events: none
+   */
   underlineContainer = document.createElement('underline-container')
   if (!existingContentEditableDiv.computedStyleMap) {
     throw new Error('browser does not support computedStyleMap()!')
   }
-  const computedStyle = Object.fromEntries(Array.from(existingContentEditableDiv.computedStyleMap().entries()))
+  const isLocalhost = window.location.hostname === 'localhost'
+  const computedStyle = {
+    ...Object.fromEntries(Array.from(existingContentEditableDiv.computedStyleMap().entries())),
+    ...(isLocalhost ? {
+      opacity: 0.2,
+      color: 'gray',
+      textShadow: '1x 1px #ff0000',
+      top: existingContentEditableDiv.offsetTop-1,
+      left: existingContentEditableDiv.offsetLeft-1,
+    } : {
+      opacity: 0,
+      visibility: 'hidden',
+      top: existingContentEditableDiv.offsetTop,
+      left: existingContentEditableDiv.offsetLeft,  
+    }),
+    position: 'absolute',
+    height: existingContentEditableDiv.clientHeight,
+    width: existingContentEditableDiv.clientWidth,
+    'pointer-events': 'none'
+    // (ensure height/width are propertly calculated...)
+    // position: absolute;
+    // left: ${ceDiv.clientY}px;
+    // right: ${cdDiv.clientX}px
+    // pointer-events: none
+  }
+
+  // TODO: reduce number of calls to entries/fromEntries, or use entirely more optimized approach.
+  // make everything !important:
+  const underlineContainerStyles = Object.entries(computedStyle).map(
+    styleSet => `${styleSet[0]}: ${styleSet[1]}  !important;`
+  ).join(' ')
+
+  underlineContainer.setAttribute('style', underlineContainerStyles)
+
+  document.documentElement.appendChild(underlineContainer)
   
 
-  const parent = existingContentEditableDiv.parentNode as ParentNode // This can never be null. Even if you deliberately try to create a div without an <html> or <body> parent, chrome will create <body> for everyone's sanity :)
+  // const parent = existingContentEditableDiv.parentNode as ParentNode // This can never be null. Even if you deliberately try to create a div without an <html> or <body> parent, chrome will create <body> for everyone's sanity :)
   // TODO:
   //  This can affect css selectors like: `#parent > div:first-child` as such, this dom mutation does risks affecting how the page looks
   //  As a future optimization, we should get the computed styles of the existingContentEditableDiv,
@@ -166,7 +198,7 @@ function insertUnderlineContainer(existingContentEditableDiv: ContentEditableDiv
   //  Do our computation
   //  "un-hard-code" the styles, remove our computation div?
   //  Further, we can insert our computation div right under document.documentElement at very end of the page, so it really shouldn't interfere with any css
-  parent.insertBefore(underlineContainer.content, existingContentEditableDiv)
+  // parent.insertBefore(underlineContainer.content, existingContentEditableDiv)
   // Generally, computing character widths is a topic of deep optimization.
   //   We could actually use browsers to build a database up in real-time
   //   Sync this charWidth database to client browsers
@@ -175,17 +207,13 @@ function insertUnderlineContainer(existingContentEditableDiv: ContentEditableDiv
   //   Then we would 
 }
 
-// replicate actual text in the same font, but with styling on the character spans
-// Actually!
-// We could pre-compute a map of character widths
-// iterate over common characters
-// create them in the dom, with the correct css/font styling,
-// then...
-// we just use the widths we've already computed
-
-// Probably PO wants this extension to be very memory efficient (near 0 when you aren't focused on the input)
-// Therefore, we won't cache computations in-between typing sessions....? or, we should clear cache when user leaves tab, using page visiblity api?
-
+function addCharsToUnderlineContainer(chars: string) {
+  if (underlineContainer === undefined) {
+    console.log('no underline container yet')
+    return
+  }
+  underlineContainer.innerHTML = '<span>i</span><span>l</span><span>W</span>'
+}
 
 function startKeyUpListener(div: ContentEditableDiv) {
   console.log('starting keyup listener...')
@@ -210,7 +238,7 @@ function highlight(div: ContentEditableDiv) {
   let text = div.innerText
   if (text.length === 0) return // could to text.trim().length, but that edge case is probably not worth the cost in performance
   console.log('highlight this:', text)
-  div.style.border = '10px dotted red'
+  div.style.border = '1px dotted red'
 
 
 }
