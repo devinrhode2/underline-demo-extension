@@ -126,6 +126,12 @@ function mapKeyUpToHighlight(event: KeyboardEvent) {
 //    if we put it in the same position in the dom,
 //    and a site is using container > div:first-child selector
 //    Then there's no way to avoid causing conflicts with that style
+// ACTUALLY - we can avoid these side effects like so:
+// get the computed styles on the given contenteditable,
+// "hard-code" those styles into the elements style attribute, with !important
+// Do our computation
+// "un-hard-code" the styles, remove our computation div?
+// Further, we can insert our computation div right under document.documentElement at very end of the page, so it really shouldn't interfere with any css
 
 // However, we can actually do something else nifty:
 
@@ -145,14 +151,33 @@ const capitalChars = [
   'QWERTYUIOPASDFGHJKLZXCVBNM'.split('')
 ]
 
-function insertDivForComputation(existingContentEditableDiv: ContentEditableDiv) {
-  const frag = document.createDocumentFragment()
-  frag.innerHTML = existingContentEditableDiv.outerHTML
+let divForComputation: undefined | HTMLTemplateElement
 
-  // hiddenDivForComputingCharWidths.setAttribute('style', 'visiblity: hidden; opactiy: 0; ')
+function insertDivForComputation(existingContentEditableDiv: ContentEditableDiv) {
+  divForComputation = document.createElement('template')
+  divForComputation.innerHTML = existingContentEditableDiv.outerHTML
+  console.dir('template node', divForComputation)
+
+  // Change tpl styles:
+  //   visibility: hidden
+  //   opacity: 0
+  //   position: relative (avoid shifting layout)
+
   const parent = existingContentEditableDiv.parentNode as ParentNode // This can never be null. Even if you deliberately try to create a div without an <html> or <body> parent, chrome will create <body> for everyone's sanity :)
-  console.log('parent', existingContentEditableDiv.parentNode)
-  parent.insertBefore(hiddenDivForComputingCharWidths, existingContentEditableDiv)
+  // TODO:
+  //  This can affect css selectors like: `#parent > div:first-child` as such, this dom mutation does risks affecting how the page looks
+  //  As a future optimization, we should get the computed styles of the existingContentEditableDiv,
+  //  "hard-code" those styles into the elements style attribute, with !important
+  //  Do our computation
+  //  "un-hard-code" the styles, remove our computation div?
+  //  Further, we can insert our computation div right under document.documentElement at very end of the page, so it really shouldn't interfere with any css
+  // Generally, computing character widths is a topic of deep optimization.
+  //   We could actually use browsers to build a database up in real-time
+  //   Sync this charWidth database to client browsers
+  //   Even use some cypress scripts to crawl the web, and keep it updated ourselves.
+  //   We can spot-check a few characters, "W", "O", "i", "l". If the width of all 4 of these match a known character/font set,
+  //   Then we would 
+  parent.insertBefore(divForComputation.content, existingContentEditableDiv)
 }
 
 // replicate actual text in the same font, but with styling on the character spans
