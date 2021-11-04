@@ -8,10 +8,10 @@ console.log('Must reload extension for modifications to take effect.');
 // no other extensions, on keep.google.com
 
 // init is defined via magic - do you know of said magic? (FYI - I think it's a bad practice, just trying to have fun here :)
-// setTimeout(init, 2000) // skipping because it's annoying in development :)
-init()
+setTimeout(init, 2000) // skipping because it's annoying in development :)
+// init()
 
-// Gosh idk why ts EventTarget is so bad here :/
+// Gosh idk why ts EventTarget type is so bad :/
 type RealisticEventTarget = Element | null
 
 function init() {
@@ -108,7 +108,8 @@ function maybeUpdateHighlight(event: FocusEvent) {
 let lastListener: undefined | DebouncedFunc<(event: KeyboardEvent) => void>
 
 function mapKeyUpToHighlight(event: KeyboardEvent) {
-  if (event.type !== 'keyup') 
+  if (event.type !== 'keyup') throw new Error('must use keyup event - ')
+  console.log('keyup event', event)
   // debug/test mode only:
   if (!isContentEditable(event.target)) {
     throw new Error('event.target is not a content editable div - this should not be possible here')
@@ -116,7 +117,59 @@ function mapKeyUpToHighlight(event: KeyboardEvent) {
   highlight(event.target as ContentEditableDiv)
 }
 
+// checkpoint: learned we can read existingContentEditableDiv.childNodes width
+
+// This will allow us to use a new strategy:
+// instead of creating a hidden div
+// (which may have side effects:
+// 1. If we make it entirely the same, no matter how identical...
+//    if we put it in the same position in the dom,
+//    and a site is using container > div:first-child selector
+//    Then there's no way to avoid causing conflicts with that style
+
+// However, we can actually do something else nifty:
+
+// We can process each character in the actual div, key by key, letter by letter.
+// Ideally, we process _as the user is typing_
+// This way, we gradually build up a cache of character widths
+// However, if they paste a bunch of stuff, then we need to "walk" through each character we haven't seen before
+
+// "Walking" through each character can serve as a fun progress indicator/loading animation
+// The the next character we need to process
+// Exactly how we do that is a little tricky.
+
+const smallChars = [
+  'qwertyuiopasdfghjklzxcvbnm'.split('')
+]
+const capitalChars = [
+  'QWERTYUIOPASDFGHJKLZXCVBNM'.split('')
+]
+
+function insertDivForComputation(existingContentEditableDiv: ContentEditableDiv) {
+  const frag = document.createDocumentFragment()
+  frag.innerHTML = existingContentEditableDiv.outerHTML
+
+  // hiddenDivForComputingCharWidths.setAttribute('style', 'visiblity: hidden; opactiy: 0; ')
+  const parent = existingContentEditableDiv.parentNode as ParentNode // This can never be null. Even if you deliberately try to create a div without an <html> or <body> parent, chrome will create <body> for everyone's sanity :)
+  console.log('parent', existingContentEditableDiv.parentNode)
+  parent.insertBefore(hiddenDivForComputingCharWidths, existingContentEditableDiv)
+}
+
+// replicate actual text in the same font, but with styling on the character spans
+// Actually!
+// We could pre-compute a map of character widths
+// iterate over common characters
+// create them in the dom, with the correct css/font styling,
+// then...
+// we just use the widths we've already computed
+
+// Probably PO wants this extension to be very memory efficient (near 0 when you aren't focused on the input)
+// Therefore, we won't cache computations in-between typing sessions....? or, we should clear cache when user leaves tab, using page visiblity api?
+
+
 function startKeyUpListener(div: ContentEditableDiv) {
+  console.log('starting keyup listener...')
+  insertDivForComputation(div)
   lastListener = debounce(mapKeyUpToHighlight, 500, {trailing: true})
   div.addEventListener('keyup', lastListener)
 }
@@ -135,10 +188,16 @@ function highlight(div: ContentEditableDiv) {
   // TODO: resume here
   //   (verify code from last night first, then continue here)
   let text = div.innerText
+  if (text.length === 0) return // could to text.trim().length, but that edge case is probably not worth the cost in performance
+  console.log('highlight this:', text)
+  div.style.border = '10px dotted red'
+
+
 }
 
 function removeHighlight(div: ContentEditableDiv) {
-  
+  console.log('remove highlight from:', div)
+  div.style.border = '1px solid black'
 }
 
 /*
@@ -195,5 +254,3 @@ event listener on body
 detect click, or focus
 
 */
-
-printLine("Using the 'printLine' function from the Print Module");
