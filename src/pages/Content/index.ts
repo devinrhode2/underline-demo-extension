@@ -8,8 +8,8 @@ console.log('Must reload extension for modifications to take effect.');
 // no other extensions, on keep.google.com
 
 // init is defined via magic - do you know of said magic? (FYI - I think it's a bad practice, just trying to have fun here :)
-// setTimeout(init, 2000) // skipping because it's annoying in development :)
-init()
+setTimeout(init, 2000) // skipping because it's annoying in development :)
+// init()
 
 function init() {
   console.log('init')
@@ -104,23 +104,6 @@ const underlines = [{
 	to: 33
 }]
 
-// // get the computed styles on the given contenteditable,
-// // "hard-code" those styles into the elements style attribute, with !important
-// // Do our computation
-// // "un-hard-code" the styles, remove our computation div?
-// // Further, we can insert our computation div right under document.documentElement at very end of the page, so it really shouldn't interfere with any css
-
-// // However, we can actually do something else nifty:
-
-// // We can process each character in the actual div, key by key, letter by letter.
-// // Ideally, we process _as the user is typing_
-// // This way, we gradually build up a cache of character widths
-// // However, if they paste a bunch of stuff, then we need to "walk" through each character we haven't seen before
-
-// // "Walking" through each character could serve as a fun progress indicator/loading animation
-// // The the next character we need to process
-// // Exactly how we do that is a little tricky.
-
 const smallChars = 'qwertyuiopasdfghjklzxcvbnm'.split('')
 const capitalChars = 'QWERTYUIOPASDFGHJKLZXCVBNM'.split('')
 
@@ -188,23 +171,7 @@ function insertUnderlineContainer(existingContentEditableDiv: ContentEditableDiv
   underlineContainer.setAttribute('style', underlineContainerStyles)
 
   document.documentElement.appendChild(underlineContainer)
-  
 
-  // const parent = existingContentEditableDiv.parentNode as ParentNode // This can never be null. Even if you deliberately try to create a div without an <html> or <body> parent, chrome will create <body> for everyone's sanity :)
-  // TODO:
-  //  This can affect css selectors like: `#parent > div:first-child` as such, this dom mutation does risks affecting how the page looks
-  //  As a future optimization, we should get the computed styles of the existingContentEditableDiv,
-  //  "hard-code" those styles into the elements style attribute, with !important
-  //  Do our computation
-  //  "un-hard-code" the styles, remove our computation div?
-  //  Further, we can insert our computation div right under document.documentElement at very end of the page, so it really shouldn't interfere with any css
-  // parent.insertBefore(underlineContainer.content, existingContentEditableDiv)
-  // Generally, computing character widths is a topic of deep optimization.
-  //   We could actually use browsers to build a database up in real-time
-  //   Sync this charWidth database to client browsers
-  //   Even use some cypress scripts to crawl the web, and keep it updated ourselves.
-  //   We can spot-check a few characters, "W", "O", "i", "l". If the width of all 4 of these match a known character/font set,
-  //   Then we would 
 }
 
 function addCharsToUnderlineContainer(chars: string) {
@@ -212,7 +179,7 @@ function addCharsToUnderlineContainer(chars: string) {
     console.log('no underline container yet')
     return
   }
-  underlineContainer.innerHTML = '<span>i</span><span>l</span><span>W</span>'
+  // underlineContainer.innerHTML = '<span>i</span><span>l</span><span>W</span>'
 }
 
 function startKeyUpListener(div: ContentEditableDiv) {
@@ -233,14 +200,12 @@ function stopKeyUpListener(div: ContentEditableDiv) {
 }
 
 function highlight(div: ContentEditableDiv) {
-  // TODO: resume here
-  //   (verify code from last night first, then continue here)
   let text = div.innerText
   if (text.length === 0) return // could to text.trim().length, but that edge case is probably not worth the cost in performance
   console.log('highlight this:', text)
   div.style.border = '1px dotted red'
 
-
+  addCharsToUnderlineContainer(text)
 }
 
 function removeHighlight(div: ContentEditableDiv) {
