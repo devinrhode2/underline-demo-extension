@@ -68,6 +68,10 @@ function maybeUpdateHighlight(event: FocusEvent) {
       return 
     }
 
+    if (lastActiveElement) {
+      stopKeyUpListener(lastActiveElement)
+    }
+
     lastActiveElement = activeElement
 
     startKeyUpListener(activeElement)
@@ -95,34 +99,42 @@ function maybeUpdateHighlight(event: FocusEvent) {
     stopKeyUpListener(eventTarget)
     removeHighlight(eventTarget)
   } else {
+    // debug/test mode only:
     // Handler is currently only registered for `focusin` and `focusout`
     throw new Error('unhandled focus event:' + event.type)
   }
 }
 
-let lastListener: undefined | ((event: KeyboardEvent) => void)
+let lastListener: undefined | DebouncedFunc<(event: KeyboardEvent) => void>
 
 function mapKeyUpToHighlight(event: KeyboardEvent) {
   if (event.type !== 'keyup') 
   // debug/test mode only:
   if (!isContentEditable(event.target)) {
-
+    throw new Error('event.target is not a content editable div - this should not be possible here')
   }
   highlight(event.target as ContentEditableDiv)
 }
 
 function startKeyUpListener(div: ContentEditableDiv) {
-  stopKeyUpListener(div)
   lastListener = debounce(mapKeyUpToHighlight, 500, {trailing: true})
   div.addEventListener('keyup', lastListener)
 }
 
 function stopKeyUpListener(div: ContentEditableDiv) {
-  div.removeEventListener('keyup', lastListener.cancel)  
+  // debug/test mode only:
+  if (lastListener === undefined || !lastListener.cancel) {
+    console.error('lastListener.cancel is not truthy - this should not be possible.')
+    return
+  }
+  lastListener.cancel()
+  div.removeEventListener('keyup', lastListener)  
 }
 
 function highlight(div: ContentEditableDiv) {
-  
+  // TODO: resume here
+  //   (verify code from last night first, then continue here)
+  let text = div.innerText
 }
 
 function removeHighlight(div: ContentEditableDiv) {
